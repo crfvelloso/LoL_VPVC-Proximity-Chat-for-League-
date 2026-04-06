@@ -7,8 +7,11 @@ It runs entirely in the background, consuming minimal resources, and does not mo
 # HOW IT WORKS
 
 This project combines Computer Vision, Real-Time Networking, and Low-Level Audio Processing to create spatial audio based on your in-game location.
+
 Computer Vision (OpenCV): The C++ client constantly captures your screen and reads the LoL minimap. It isolates the white camera bounding box to pinpoint your exact (X, Y) coordinates on the map.
+
 Real-Time Network (Node.js & WebSockets): Your coordinates and raw microphone audio bytes are continuously packed and streamed to a Node.js signaling server.
+
 Spatial Audio (Miniaudio): When your client receives your partner's audio and position, it calculates the geometric distance between both players. If the partner is close, the volume is at 100%. As they move away, the volume dynamically fades out until they are completely muted.
 
 # INSTALLATION & SETUP 
