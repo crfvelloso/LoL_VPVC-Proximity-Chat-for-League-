@@ -19,7 +19,7 @@ To play with a friend, one of you will need to host the server (the Host), and b
 
 Prerequisites
 Node.js installed (for the Host).
-Ngrok installed and have an account(for the Host, to allow internet connections).
+Radmin VPN installed and have an account(every player needs to have Radmin VPN).
 The release package containing lol_proximity.exe and the OpenCV .dll file.
 
 Step-by-Step Guide
