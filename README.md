@@ -49,4 +49,4 @@ Paste the Ngrok link the Host provided, but change tcp:// to ws://.
 
 Note: If you are playing alone on the Host PC and just want to test it, simply press ENTER without typing anything to connect to localhost
 
-For now, the client is going to be in PT/BR, because i am going to use this with my fellow brazilian friends, later versions may feature EN.
+For now, the client is going to be in PT/BR, because i am going to use this with my f
