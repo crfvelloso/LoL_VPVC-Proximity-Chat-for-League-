@@ -1,4 +1,4 @@
-# LoL_VPVC-Proximity-Chat-for-League-
+# LoL_VPVC Proximity Chat for League (WIP)
 A real-time Proximity Voice Chat for League of Legends. Built with C++ and Node.js, it uses OpenCV to track player positions on the minimap and WebSockets to transmit spatial audio. Voice volume fades dynamically based on in-game distance. Safe, standalone, and requires no game file modifications!
 
 Inspired by the famous VPVC (Valorant Proximity Voice Chat), I decided to bring the same immersive and hilarious experience to the Summoner's Rift. Built entirely from scratch in just 3 days by a Brazilian developer 🇧🇷, this project is a standalone proximity voice chat for League of Legends.
