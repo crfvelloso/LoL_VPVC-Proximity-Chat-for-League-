@@ -4,7 +4,10 @@
 #include <chrono>
 #include <atomic>
 #include <cmath>
-
+#include <vector>
+#include <sstream>
+#include <cctype>
+#include <windows.h>
 #include <rtc/rtc.hpp>
 
 #include "NetworkManager.h"
@@ -12,6 +15,11 @@
 #include "AudioManager.h"
 
 std::atomic<bool> isRunning(true);
+std::atomic<double> currentDistance(9999.0);
+std::atomic<bool> isMuted(false);
+std::atomic<bool> isDeafened(false);
+std::atomic<float> userVolume(100.0f);
+std::atomic<char> muteKeybind(0);
 
 double CalculateDistance(int x1, int y1, int x2, int y2) {
     return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2));
@@ -23,12 +31,11 @@ int main() {
     std::cout << "========================================\n" << std::endl;
 
     std::string serverUrl;
-    std::cout << "[Config] Cole o link do servidor Ngrok aqui (ou aperte ENTER para jogar local): ";
+    std::cout << "Link do servidor Ngrok ou IP Radmin: ";
     std::getline(std::cin, serverUrl);
 
     if (serverUrl.empty()) {
         serverUrl = "ws://127.0.0.1:8080";
-        std::cout << "[Config] Nenhum link inserido. Usando servidor local: " << serverUrl << std::endl;
     } else {
         if (serverUrl.find("https://") == 0) {
             serverUrl.replace(0, 8, "ws://");
@@ -37,38 +44,130 @@ int main() {
         } else if (serverUrl.find("ws://") != 0 && serverUrl.find("wss://") != 0) {
             serverUrl = "ws://" + serverUrl;
         }
-        std::cout << "[Config] Iniciando conexao com: " << serverUrl << std::endl;
     }
 
     rtc::InitLogger(rtc::LogLevel::Error); 
     
     NetworkManager net;
     if (!net.Init(serverUrl)) {
-        std::cout << "[Erro] Falha ao conectar no servidor! Verifique o link e tente novamente." << std::endl;
+        std::cout << "Falha ao conectar no servidor!" << std::endl;
         std::cin.get();
         return 1;
     }
 
     AudioManager audio;
     if (!audio.Init()) {
-        std::cout << "[Erro] Nao foi possivel iniciar o audio." << std::endl;
+        std::cout << "Nao foi possivel iniciar o audio." << std::endl;
         std::cin.get();
         return 1;
     }
 
     audio.SetNetworkSendCallback([&net](const std::vector<uint8_t>& audioData) {
-        net.SendAudio(audioData);
+        if (!isMuted.load() && !isDeafened.load()) {
+            net.SendAudio(audioData);
+        }
     });
 
     net.SetAudioReceivedCallback([&audio](const std::vector<uint8_t>& audioData) {
-        audio.ReceiveAudio(audioData);
+        if (isDeafened.load()) return;
+
+        double dist = currentDistance.load();
+        double maxStartFade = 25.0;
+        double maxEndFade = 45.0;
+        double fade = 1.0;
+
+        if (dist > maxEndFade) {
+            fade = 0.0;
+        } else if (dist > maxStartFade) {
+            fade = 1.0 - ((dist - maxStartFade) / (maxEndFade - maxStartFade));
+        }
+
+        float volMult = (userVolume.load() / 100.0f) * 2.0f;
+        float finalMult = static_cast<float>(fade) * volMult;
+
+        std::vector<uint8_t> modData = audioData;
+        float* fData = reinterpret_cast<float*>(modData.data());
+        size_t fCount = modData.size() / sizeof(float);
+        
+        for(size_t i = 0; i < fCount; i++) {
+            fData[i] *= finalMult;
+        }
+
+        audio.ReceiveAudio(modData);
     });
+
+    std::thread cmdThread([]() {
+        std::string line;
+        while (isRunning) {
+            std::getline(std::cin, line);
+            std::istringstream iss(line);
+            std::string cmd;
+            iss >> cmd;
+            
+            if (cmd == "volume") {
+                float v;
+                if (iss >> v) {
+                    if (v < 0.0f) v = 0.0f;
+                    if (v > 100.0f) v = 100.0f;
+                    userVolume.store(v);
+                    std::cout << "Volume definido para " << v << std::endl;
+                }
+            } else if (cmd == "mute") {
+                isMuted.store(!isMuted.load());
+                if (isMuted.load()) std::cout << "Microfone silenciado com sucesso!" << std::endl;
+                else std::cout << "Microfone ativado!" << std::endl;
+            } else if (cmd == "muteall") {
+                isDeafened.store(!isDeafened.load());
+                if (isDeafened.load()) std::cout << "Audio e microfone silenciados com sucesso!" << std::endl;
+                else std::cout << "Audio e microfone ativados!" << std::endl;
+            } else if (cmd == "keybind") {
+                std::string action;
+                iss >> action;
+                if (action == "mute") {
+                    std::string key;
+                    iss >> key;
+                    if (key.length() > 0) {
+                        muteKeybind.store(std::toupper(key[0]));
+                        std::cout << "Keybind de mute definida para a tecla: " << static_cast<char>(muteKeybind.load()) << std::endl;
+                    }
+                }
+            } else if (cmd == "help") {
+                std::cout << "\n--- Comandos Disponiveis ---" << std::endl;
+                std::cout << "volume [0-100]       - Define o volume geral do programa." << std::endl;
+                std::cout << "mute                 - Silencia ou ativa o seu microfone." << std::endl;
+                std::cout << "muteall              - Silencia totalmente o microfone e o audio recebido." << std::endl;
+                std::cout << "keybind mute [tecla] - Define um atalho no teclado para mutar/desmutar." << std::endl;
+                std::cout << "help                 - Mostra esta lista de comandos.\n" << std::endl;
+            }
+        }
+    });
+    cmdThread.detach();
+
+    std::thread keyThread([]() {
+        bool wasPressed = false;
+        while (isRunning) {
+            char k = muteKeybind.load();
+            if (k != 0) {
+                short state = GetAsyncKeyState(k);
+                bool isPressed = (state & 0x8000) != 0;
+                
+                if (isPressed && !wasPressed) {
+                    isMuted.store(!isMuted.load());
+                    if (isMuted.load()) std::cout << "\nMicrofone silenciado com sucesso!\n";
+                    else std::cout << "\nMicrofone ativado!\n";
+                }
+                wasPressed = isPressed;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
+    keyThread.detach();
 
     MinimapReader minimap;
     minimap.Init(1600, 800, 320, 320); 
 
-    std::cout << "\n[Sistema] O radar esta ativo e furtivo!" << std::endl;
-    std::cout << "[Sistema] Deixe esta janela aberta no fundo e bom jogo." << std::endl;
+    std::cout << "\nPara uma lista de todos os comandos, insira help" << std::endl;
+    std::cout << "O radar esta ativo e furtivo." << std::endl;
 
     while (isRunning) {
         minimap.Capture();
@@ -79,15 +178,19 @@ int main() {
 
             int partnerX = 0, partnerY = 0;
             if (net.GetPartnerPosition(partnerX, partnerY)) {
-                double distance = CalculateDistance(myPos.x, myPos.y, partnerX, partnerY);
-                audio.SetVolumeFromDistance(distance);
+                currentDistance.store(CalculateDistance(myPos.x, myPos.y, partnerX, partnerY));
+                audio.SetVolumeFromDistance(0.0);
             } else {
-                audio.SetVolumeFromDistance(9999.0);
+                currentDistance.store(9999.0);
+                audio.SetVolumeFromDistance(0.0);
             }
         } else {
-            audio.SetVolumeFromDistance(9999.0);
+            currentDistance.store(9999.0);
+            audio.SetVolumeFromDistance(0.0);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    return 0;
 }
