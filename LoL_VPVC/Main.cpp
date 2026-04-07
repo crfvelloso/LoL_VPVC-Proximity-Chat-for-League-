@@ -20,6 +20,7 @@ std::atomic<bool> isMuted(false);
 std::atomic<bool> isDeafened(false);
 std::atomic<float> userVolume(100.0f);
 std::atomic<char> muteKeybind(0);
+std::string globalServerUrl = "";
 
 double CalculateDistance(int x1, int y1, int x2, int y2) {
     return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2));
@@ -30,26 +31,25 @@ int main() {
     std::cout << "       LoL Proximity Voice Chat         " << std::endl;
     std::cout << "========================================\n" << std::endl;
 
-    std::string serverUrl;
     std::cout << "Link do servidor Ngrok ou IP Radmin: ";
-    std::getline(std::cin, serverUrl);
+    std::getline(std::cin, globalServerUrl);
 
-    if (serverUrl.empty()) {
-        serverUrl = "ws://127.0.0.1:8080";
+    if (globalServerUrl.empty()) {
+        globalServerUrl = "ws://127.0.0.1:8080";
     } else {
-        if (serverUrl.find("https://") == 0) {
-            serverUrl.replace(0, 8, "ws://");
-        } else if (serverUrl.find("http://") == 0) {
-            serverUrl.replace(0, 7, "ws://");
-        } else if (serverUrl.find("ws://") != 0 && serverUrl.find("wss://") != 0) {
-            serverUrl = "ws://" + serverUrl;
+        if (globalServerUrl.find("https://") == 0) {
+            globalServerUrl.replace(0, 8, "ws://");
+        } else if (globalServerUrl.find("http://") == 0) {
+            globalServerUrl.replace(0, 7, "ws://");
+        } else if (globalServerUrl.find("ws://") != 0 && globalServerUrl.find("wss://") != 0) {
+            globalServerUrl = "ws://" + globalServerUrl;
         }
     }
 
     rtc::InitLogger(rtc::LogLevel::Error); 
     
     NetworkManager net;
-    if (!net.Init(serverUrl)) {
+    if (!net.Init(globalServerUrl)) {
         std::cout << "Falha ao conectar no servidor!" << std::endl;
         std::cin.get();
         return 1;
@@ -131,12 +131,23 @@ int main() {
                         std::cout << "Keybind de mute definida para a tecla: " << static_cast<char>(muteKeybind.load()) << std::endl;
                     }
                 }
+            } else if (cmd == "ping") {
+                std::string ip = globalServerUrl;
+                if (ip.find("ws://") == 0) ip = ip.substr(5);
+                if (ip.find("wss://") == 0) ip = ip.substr(6);
+                size_t colonPos = ip.find(':');
+                if (colonPos != std::string::npos) ip = ip.substr(0, colonPos);
+                
+                std::cout << "\nTestando latencia com o servidor (" << ip << ")...\n";
+                std::string sysCmd = "ping -n 1 " + ip;
+                std::system(sysCmd.c_str());
             } else if (cmd == "help") {
                 std::cout << "\n--- Comandos Disponiveis ---" << std::endl;
                 std::cout << "volume [0-100]       - Define o volume geral do programa." << std::endl;
                 std::cout << "mute                 - Silencia ou ativa o seu microfone." << std::endl;
                 std::cout << "muteall              - Silencia totalmente o microfone e o audio recebido." << std::endl;
                 std::cout << "keybind mute [tecla] - Define um atalho no teclado para mutar/desmutar." << std::endl;
+                std::cout << "ping                 - Mostra a latencia da rede em ms." << std::endl;
                 std::cout << "help                 - Mostra esta lista de comandos.\n" << std::endl;
             }
         }
